@@ -3,7 +3,6 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
-#include <queue>
 #include <cstdlib>
 #include <ctime>
 
@@ -95,7 +94,7 @@ void Network::updateLinkCost(const std::string& router1, const std::string& rout
 }
 
 void Network::updateAllRoutingTables() {
-    // Calcular rutas más cortas desde cada enrutador usando Dijkstra
+    // Calcular rutas mÃƒÂ¡s cortas desde cada enrutador usando Dijkstra
     for (const auto& pair : routers) {
         dijkstra(pair.first);
     }
@@ -110,7 +109,7 @@ void Network::dijkstra(const std::string& source) {
     std::map<std::string, std::string> previous;
     std::set<std::string> unvisited;
 
-    // Inicialización
+    // InicializaciÃƒÂ³n
     for (const auto& pair : routers) {
         distances[pair.first] = std::numeric_limits<int>::max();
         unvisited.insert(pair.first);
@@ -130,7 +129,7 @@ void Network::dijkstra(const std::string& source) {
         }
 
         if (minDist == std::numeric_limits<int>::max()) {
-            break; // No hay más nodos alcanzables
+            break; // No hay mÃƒÂ¡s nodos alcanzables
         }
 
         unvisited.erase(current);
@@ -203,6 +202,7 @@ void Network::loadFromFile(const std::string& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cout << "Error: No se pudo abrir el archivo '" << filename << "'." << std::endl;
+        std::cout << "Verifique que el archivo exista y tenga permisos de lectura." << std::endl;
         return;
     }
 
@@ -214,22 +214,92 @@ void Network::loadFromFile(const std::string& filename) {
     topology.clear();
 
     std::string line;
+    int lineNumber = 0;
+    bool firstLineProcessed = false;
+
     while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue; // Ignorar líneas vacías y comentarios
+        lineNumber++;
 
-        std::istringstream iss(line);
-        std::string router1, router2;
-        int cost;
+        // Limpiar espacios
+        line.erase(0, line.find_first_not_of(" \t\r\n"));
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
 
-        if (iss >> router1 >> router2 >> cost) {
-            if (!hasRouter(router1)) addRouter(router1);
-            if (!hasRouter(router2)) addRouter(router2);
+        if (line.empty()) continue;
+
+        // Primera lÃ­nea: lista de routers separados por comas
+        if (!firstLineProcessed) {
+            std::istringstream iss(line);
+            std::string routerName;
+
+            while (std::getline(iss, routerName, ',')) {
+                // Limpiar espacios del nombre
+                routerName.erase(0, routerName.find_first_not_of(" \t"));
+                routerName.erase(routerName.find_last_not_of(" \t") + 1);
+
+                if (!routerName.empty()) {
+                    addRouter(routerName);
+                }
+            }
+            firstLineProcessed = true;
+            continue;
+        }
+
+        // LÃ­neas siguientes: enlaces en formato Router1->Router2:Path;Cost
+        size_t arrowPos = line.find("->");
+        size_t colonPos = line.find(":");
+        size_t semicolonPos = line.find(";");
+
+        if (arrowPos == std::string::npos || colonPos == std::string::npos ||
+            semicolonPos == std::string::npos) {
+            std::cout << "Advertencia lÃ­nea " << lineNumber
+                      << ": formato incorrecto: '" << line << "'" << std::endl;
+            continue;
+        }
+
+        // Extraer router1, router2 y costo
+        std::string router1 = line.substr(0, arrowPos);
+        std::string router2 = line.substr(arrowPos + 2, colonPos - arrowPos - 2);
+        std::string costStr = line.substr(semicolonPos + 1);
+
+        // Limpiar espacios
+        router1.erase(0, router1.find_first_not_of(" \t"));
+        router1.erase(router1.find_last_not_of(" \t") + 1);
+        router2.erase(0, router2.find_first_not_of(" \t"));
+        router2.erase(router2.find_last_not_of(" \t") + 1);
+        costStr.erase(0, costStr.find_first_not_of(" \t"));
+        costStr.erase(costStr.find_last_not_of(" \t") + 1);
+
+        try {
+            int cost = std::stoi(costStr);
+
+            if (!hasRouter(router1)) {
+                std::cout << "Advertencia lÃ­nea " << lineNumber
+                          << ": router '" << router1 << "' no estÃ¡ en la lista inicial" << std::endl;
+                addRouter(router1);
+            }
+            if (!hasRouter(router2)) {
+                std::cout << "Advertencia lÃ­nea " << lineNumber
+                          << ": router '" << router2 << "' no estÃ¡ en la lista inicial" << std::endl;
+                addRouter(router2);
+            }
+
             addLink(router1, router2, cost);
+        } catch (const std::exception& e) {
+            std::cout << "Advertencia lÃ­nea " << lineNumber
+                      << ": costo invÃ¡lido: '" << costStr << "'" << std::endl;
         }
     }
 
     file.close();
-    std::cout << "Red cargada desde '" << filename << "'." << std::endl;
+    std::cout << "\nâœ“ Red cargada exitosamente desde '" << filename << "'" << std::endl;
+    std::cout << "  Routers: " << routers.size() << std::endl;
+
+    int linkCount = 0;
+    for (const auto& pair : topology) {
+        linkCount += pair.second.size();
+    }
+    linkCount /= 2;
+    std::cout << "  Enlaces: " << linkCount << std::endl;
 }
 
 void Network::generateRandom(int numRouters, double linkProbability,
@@ -269,10 +339,19 @@ void Network::saveToFile(const std::string& filename) const {
         return;
     }
 
-    file << "# Topología de red\n";
-    file << "# Formato: Router1 Router2 Costo\n\n";
+    // Primera lÃ­nea: lista de routers separados por comas
+    std::vector<std::string> routerNames = getRouterNames();
+    for (size_t i = 0; i < routerNames.size(); ++i) {
+        file << routerNames[i];
+        if (i < routerNames.size() - 1) {
+            file << ",";
+        }
+    }
+    file << "\n";
 
+    // LÃ­neas siguientes: enlaces en formato Router1->Router2:Path;Cost
     std::set<std::pair<std::string, std::string>> written;
+
     for (const auto& pair : topology) {
         const std::string& router1 = pair.first;
         for (const auto& link : pair.second) {
@@ -282,18 +361,32 @@ void Network::saveToFile(const std::string& filename) const {
             // Evitar escribir el mismo enlace dos veces
             if (written.find({router1, router2}) == written.end() &&
                 written.find({router2, router1}) == written.end()) {
-                file << router1 << " " << router2 << " " << cost << "\n";
+
+                // Obtener el path desde router1 a router2
+                std::vector<std::string> path = getPacketPath(router1, router2);
+
+                // Construir el path string
+                std::string pathStr;
+                for (size_t i = 0; i < path.size(); ++i) {
+                    pathStr += path[i];
+                    if (i < path.size() - 1) {
+                        pathStr += "-";
+                    }
+                }
+
+                // Escribir en formato: Router1->Router2:Path;Cost
+                file << router1 << "->" << router2 << ":" << pathStr << ";" << cost << "\n";
                 written.insert({router1, router2});
             }
         }
     }
 
     file.close();
-    std::cout << "Red guardada en '" << filename << "'." << std::endl;
+    std::cout << "\nâœ“ Red guardada exitosamente en '" << filename << "'" << std::endl;
+    std::cout << "  Formato: compatible con router_1.txt" << std::endl;
 }
-
 void Network::printNetwork() const {
-    std::cout << "\n========== TOPOLOGÍA DE LA RED ==========" << std::endl;
+    std::cout << "\n========== TOPOLOGÃƒÂA DE LA RED ==========" << std::endl;
     std::cout << "Enrutadores: " << routers.size() << std::endl;
 
     int linkCount = 0;
@@ -327,6 +420,14 @@ void Network::printAllRoutingTables() const {
     for (const auto& pair : routers) {
         pair.second->printRoutingTable();
     }
+}
+
+std::vector<std::string> Network::getRouterNames() const {
+    std::vector<std::string> names;
+    for (const auto& pair : routers) {
+        names.push_back(pair.first);
+    }
+    return names;
 }
 
 std::vector<std::string> Network::getRouterNames() const {
