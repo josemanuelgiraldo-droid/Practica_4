@@ -6,6 +6,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <limits>
 
 /**
  * Clase Network - Representa una red de enrutadores interconectados
@@ -66,4 +67,3 @@ public:
 };
 
 #endif // NETWORK_H
-
